@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Ponto Eletrônico</title>
+
+  <!-- Estilos com Pico.css (CDN) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Ícones do Lucide via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+
+  <main class="container">
+    <header style="margin-bottom: 2rem; text-align: center;">
+      <h2><i data-lucide="clock"></i> Controle de Ponto</h2>
+      <p>Sistema Web Corporativo de Marcação de Ponto</p>
+    </header>
+
+    <!-- Formulário de Marcação de Ponto -->
+    <article>
+      <h3>Registrar Ponto</h3>
+      <form id="form-ponto">
+        <label for="nome">Nome do Funcionário</label>
+        <input type="text" id="nome" placeholder="Digite seu nome completo..." required>
+
+        <label for="tipo">Tipo de Batida</label>
+        <select id="tipo" required>
+          <option value="Entrada">Entrada</option>
+          <option value="Saída Almoço">Saída Almoço</option>
+          <option value="Retorno Almoço">Retorno Almoço</option>
+          <option value="Saída">Saída</option>
+        </select>
+
+        <button type="submit">
+          <i data-lucide="check-circle"></i> Confirmar Marcação
+        </button>
+      </form>
+    </article>
+
+    <!-- Tabela de Histórico -->
+    <article>
+      <h3>Histórico de Batidas</h3>
+      <figure>
+        <table role="grid">
+          <thead>
+            <tr>
+              <th scope="col">Data e Hora</th>
+              <th scope="col">Funcionário</th>
+              <th scope="col">Tipo de Registro</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-registros">
+            <tr>
+              <td colspan="3" style="text-align: center;">Carregando registros...</td>
+            </tr>
+          </tbody>
+        </table>
+      </figure>
+    </article>
+  </main>
+
+  <!-- Conexão JavaScript com o Supabase (Modelo No-Build) -->
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    // Credenciais corrigidas do Supabase
+    const SUPABASE_URL = 'https://igpoavxxfveoxoajfzpn.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlncG9hdnh4ZnZlb3hvYWpmenBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMDA3OTUsImV4cCI6MjEwMzg3Njc5NX0.WZWjZTJFenZsX9qgbaHdp0C9fBOw09kCMLFCYr2tE7w'
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+
+    // Renderiza os ícones
+    lucide.createIcons();
+
+    // Função para buscar e listar os dados salvos no banco
+    async function carregarRegistros() {
+      const { data, error } = await supabase
+        .from('registros_ponto')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      const tbody = document.getElementById('tabela-registros');
+
+      if (error) {
+        console.error('Erro ao buscar registros:', error);
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Erro ao carregar dados do Supabase.</td></tr>';
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align: center;">Nenhum registro encontrado.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      data.forEach(item => {
+        // Formata a data convertendo de UTC para o fuso horário de Brasília
+        const dataFormatada = new Date(item.created_at).toLocaleString('pt-BR', {
+          timeZone: 'America/Sao_Paulo'
+        });
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${dataFormatada}</td>
+          <td>${item.usuario_nome}</td>
+          <td>${item.tipo_registro}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Função para registrar nova batida
+    document.getElementById('form-ponto').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const usuario_nome = document.getElementById('nome').value;
+      const tipo_registro = document.getElementById('tipo').value;
+
+      const { error } = await supabase
+        .from('registros_ponto')
+        .insert([{ usuario_nome, tipo_registro }]);
+
+      if (error) {
+        alert('Erro ao registrar ponto: ' + error.message);
+        console.error(error);
+      } else {
+        alert('Ponto registrado com sucesso!');
+        document.getElementById('nome').value = '';
+        carregarRegistros();
+      }
+    });
+
+    // Executa a busca inicial
+    carregarRegistros();
+  </script>
+</body>
+</html>
