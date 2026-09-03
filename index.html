@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Controle de Ponto Online</title>
+  
+  <!-- Pico.css para estilização limpa -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    .camera-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    video {
+      width: 100%;
+      max-width: 360px;
+      border-radius: 8px;
+      border: 2px solid var(--pico-muted-border-color);
+      background-color: #000;
+    }
+    .preview-photo {
+      max-width: 360px;
+      border-radius: 8px;
+      border: 2px solid var(--pico-primary);
+      margin-top: 0.5rem;
+    }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 12px;
+      font-size: 0.875rem;
+      font-weight: bold;
+    }
+    .badge-success { background: rgba(46, 125, 50, 0.2); color: #81c784; }
+    .badge-danger { background: rgba(198, 40, 40, 0.2); color: #e57373; }
+  </style>
+</head>
+<body>
+
+  <main class="container">
+    <header style="text-align: center; margin-top: 1.5rem;">
+      <h1><i data-lucide="clock"></i> Controle de Ponto</h1>
+      <p>Registre seu ponto com verificação por foto</p>
+    </header>
+
+    <!-- ÁREA DA CÂMERA E REGISTRO -->
+    <article>
+      <header><strong>Comprovante Fotográfico</strong></header>
+      
+      <div class="camera-container">
+        <!-- Prévia da Câmera em tempo real -->
+        <video id="webcam" autoplay playsinline></video>
+        
+        <!-- Canvas oculto para tirar a foto -->
+        <canvas id="canvas" style="display: none;"></canvas>
+        
+        <!-- Exibição da foto capturada -->
+        <img id="foto-preview" class="preview-photo" style="display: none;" alt="Comprovante de foto">
+      </div>
+
+      <div class="grid">
+        <button type="button" class="secondary" onclick="tirarFoto()">
+          <i data-lucide="camera"></i> Tirar Foto
+        </button>
+        <button type="button" class="outline" id="btn-recapturar" onclick="reiniciarCamera()" style="display: none;">
+          <i data-lucide="refresh-cw"></i> Nova Foto
+        </button>
+      </div>
+
+      <hr>
+
+      <!-- FORMULÁRIO DE PONTO -->
+      <form id="form-ponto" onsubmit="registrarPonto(event)">
+        <label for="funcionario">Nome do Funcionário</label>
+        <input type="text" id="funcionario" name="funcionario" placeholder="Ex: Rhenan" required>
+
+        <label for="tipo">Tipo de Registro</label>
+        <select id="tipo" name="tipo" required>
+          <option value="Entrada">Entrada</option>
+          <option value="Saída para Almoço">Saída para Almoço</option>
+          <option value="Retorno do Almoço">Retorno do Almoço</option>
+          <option value="Saída">Saída</option>
+        </select>
+
+        <button type="submit" id="btn-submit">
+          <i data-lucide="check-circle"></i> Bater Ponto
+        </button>
+      </form>
+    </article>
+
+    <!-- HISTÓRICO DE REGISTROS -->
+    <article>
+      <header><strong>Histórico de Batidas (Horário de Brasília)</strong></header>
+      <figure>
+        <table role="grid">
+          <thead>
+            <tr>
+              <th>Funcionário</th>
+              <th>Tipo</th>
+              <th>Data/Hora (SP)</th>
+              <th>Comprovante</th>
+            </tr>
+          </thead>
+          <tbody id="tabela-registros">
+            <tr><td colspan="4" style="text-align: center;">Carregando registros...</td></tr>
+          </tbody>
+        </table>
+      </figure>
+    </article>
+  </main>
+
+  <script>
+    // --- 1. CONFIGURAÇÃO DO SUPABASE ---
+    const SUPABASE_URL = 'https://igpoavxxfveoxoajfzpn.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlncG9hdnh4ZnZlb3hvYWpmenBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMDA3OTUsImV4cCI6MjEwMzg3Njc5NX0.WZWjZTJFenZsX9qgbaHdp0C9fBOw09kCMLFCYr2tE7w'; // Substitua pela sua chave anon key
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let fotoBlob = null; // Variável global para armazenar o arquivo da imagem
+
+    // --- 2. INICIALIZAR ÍCONES E CÂMERA ---
+    document.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      iniciarCamera();
+      carregarHistorico();
+    });
+
+    // Inicia a webcam do dispositivo
+    async function iniciarCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const video = document.getElementById('webcam');
+        video.srcObject = stream;
+      } catch (err) {
+        console.error("Erro ao acessar câmera:", err);
+        alert("Não foi possível acessar a câmera. Verifique se o navegador tem permissão.");
+      }
+    }
+
+    // Tira a foto a partir do vídeo
+    function tirarFoto() {
+      const video = document.getElementById('webcam');
+      const canvas = document.getElementById('canvas');
+      const preview = document.getElementById('foto-preview');
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      canvas.toBlob(blob => {
+        fotoBlob = blob;
+        preview.src = URL.createObjectURL(blob);
+        preview.style.display = 'block';
+        video.style.display = 'none';
+        document.getElementById('btn-recapturar').style.display = 'inline-block';
+      }, 'image/jpeg', 0.85);
+    }
+
+    // Reinicia a câmera para tirar outra foto
+    function reiniciarCamera() {
+      fotoBlob = null;
+      document.getElementById('foto-preview').style.display = 'none';
+      document.getElementById('webcam').style.display = 'block';
+      document.getElementById('btn-recapturar').style.display = 'none';
+    }
+
+    // --- 3. BATER PONTO E UPLOAD DE FOTO ---
+    async function registrarPonto(e) {
+      e.preventDefault();
+
+      if (!fotoBlob) {
+        alert("Por favor, tire uma foto para usar como comprovante antes de bater o ponto!");
+        return;
+      }
+
+      const btn = document.getElementById('btn-submit');
+      btn.ariaBusy = "true";
+      btn.innerText = "Registrando...";
+
+      try {
+        // A) Upload para o Supabase Storage (Bucket "comprovantes")
+        const nomeArquivo = `ponto_${Date.now()}.jpg`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('comprovantes')
+          .upload(nomeArquivo, fotoBlob);
+
+        if (uploadError) throw uploadError;
+
+        // B) Pega o Link Público do arquivo enviado
+        const { data: publicUrlData } = supabase.storage
+          .from('comprovantes')
+          .getPublicUrl(nomeArquivo);
+
+        const fotoUrl = publicUrlData.publicUrl;
+
+        // C) Inserir na tabela "registros_ponto"
+        const funcionario = document.getElementById('funcionario').value;
+        const tipo = document.getElementById('tipo').value;
+
+        const { error: dbError } = await supabase.from('registros_ponto').insert([
+          {
+            funcionario: funcionario,
+            tipo: tipo,
+            foto_url: fotoUrl
+          }
+        ]);
+
+        if (dbError) throw dbError;
+
+        alert("Ponto e comprovante registrados com sucesso!");
+        
+        // Limpa formulário e reseta câmera
+        document.getElementById('form-ponto').reset();
+        reiniciarCamera();
+        carregarHistorico();
+
+      } catch (err) {
+        console.error("Erro ao registrar ponto:", err);
+        alert("Erro ao registrar ponto: " + (err.message || "Verifique o console."));
+      } finally {
+        btn.ariaBusy = "false";
+        btn.innerHTML = `<i data-lucide="check-circle"></i> Bater Ponto`;
+        lucide.createIcons();
+      }
+    }
+
+    // --- 4. CARREGAR HISTÓRICO COM FUSO HORÁRIO DE BRASÍLIA ---
+    async function carregarHistorico() {
+      const tabela = document.getElementById('tabela-registros');
+      
+      try {
+        const { data, error } = await supabase
+          .from('registros_ponto')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(10);
+
+        if (error) throw error;
+
+        if (!data || data.length === 0) {
+          tabela.innerHTML = '<tr><td colspan="4" style="text-align: center;">Nenhum registro encontrado.</td></tr>';
+          return;
+        }
+
+        tabela.innerHTML = data.map(item => {
+          // Converte UTC salvo no Supabase para América/São_Paulo (Brasília)
+          const dataUtc = new Date(item.created_at);
+          const dataFormatada = dataUtc.toLocaleString('pt-BR', {
+            timeZone: 'America/Sao_Paulo',
+            dateStyle: 'short',
+            timeStyle: 'medium'
+          });
+
+          const linkFoto = item.foto_url 
+            ? `<a href="${item.foto_url}" target="_blank">🖼️ Ver Foto</a>` 
+            : 'Sem foto';
+
+          return `
+            <tr>
+              <td><strong>${item.funcionario || 'Anônimo'}</strong></td>
+              <td>${item.tipo}</td>
+              <td>${dataFormatada}</td>
+              <td>${linkFoto}</td>
+            </tr>
+          `;
+        }).join('');
+
+      } catch (err) {
+        console.error("Erro ao carregar histórico:", err);
+        tabela.innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar registros.</td></tr>';
+      }
+    }
+  </script>
+</body>
+</html>
