@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Controle de Ponto Online</title>
   
-  <!-- Pico.css para estilização limpa -->
+  <!-- Pico.css para estilização -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
   
   <!-- Lucide Icons -->
@@ -34,17 +34,6 @@
       border: 2px solid var(--pico-primary);
       margin-top: 0.5rem;
     }
-    .status-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.25rem 0.75rem;
-      border-radius: 12px;
-      font-size: 0.875rem;
-      font-weight: bold;
-    }
-    .badge-success { background: rgba(46, 125, 50, 0.2); color: #81c784; }
-    .badge-danger { background: rgba(198, 40, 40, 0.2); color: #e57373; }
   </style>
 </head>
 <body>
@@ -55,18 +44,18 @@
       <p>Registre seu ponto com verificação por foto</p>
     </header>
 
-    <!-- ÁREA DA CÂMERA E REGISTRO -->
+    <!-- ÁREA DA CÂMERA E FORMULÁRIO -->
     <article>
       <header><strong>Comprovante Fotográfico</strong></header>
       
       <div class="camera-container">
-        <!-- Prévia da Câmera em tempo real -->
+        <!-- Prévia da Câmera -->
         <video id="webcam" autoplay playsinline></video>
         
-        <!-- Canvas oculto para tirar a foto -->
+        <!-- Canvas invisível para capturar a foto -->
         <canvas id="canvas" style="display: none;"></canvas>
         
-        <!-- Exibição da foto capturada -->
+        <!-- Prévia da foto capturada -->
         <img id="foto-preview" class="preview-photo" style="display: none;" alt="Comprovante de foto">
       </div>
 
@@ -124,10 +113,10 @@
   <script>
     // --- 1. CONFIGURAÇÃO DO SUPABASE ---
     const SUPABASE_URL = 'https://igpoavxxfveoxoajfzpn.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlncG9hdnh4ZnZlb3hvYWpmenBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMDA3OTUsImV4cCI6MjEwMzg3Njc5NX0.WZWjZTJFenZsX9qgbaHdp0C9fBOw09kCMLFCYr2tE7w'; // Substitua pela sua chave anon key
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlncG9hdnh4ZnZlb3hvYWpmenBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMDA3OTUsImV4cCI6MjEwMzg3Njc5NX0.WZWjZTJFenZsX9qgbaHdp0C9fBOw09kCMLFCYr2tE7w'; // <--- COLE SUA ANON KEY AQUI
     const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    let fotoBlob = null; // Variável global para armazenar o arquivo da imagem
+    let fotoBlob = null;
 
     // --- 2. INICIALIZAR ÍCONES E CÂMERA ---
     document.addEventListener('DOMContentLoaded', () => {
@@ -136,7 +125,6 @@
       carregarHistorico();
     });
 
-    // Inicia a webcam do dispositivo
     async function iniciarCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -144,11 +132,10 @@
         video.srcObject = stream;
       } catch (err) {
         console.error("Erro ao acessar câmera:", err);
-        alert("Não foi possível acessar a câmera. Verifique se o navegador tem permissão.");
+        alert("Não foi possível acessar a câmera. Permita o acesso à câmera no seu navegador.");
       }
     }
 
-    // Tira a foto a partir do vídeo
     function tirarFoto() {
       const video = document.getElementById('webcam');
       const canvas = document.getElementById('canvas');
@@ -169,7 +156,6 @@
       }, 'image/jpeg', 0.85);
     }
 
-    // Reinicia a câmera para tirar outra foto
     function reiniciarCamera() {
       fotoBlob = null;
       document.getElementById('foto-preview').style.display = 'none';
@@ -177,12 +163,12 @@
       document.getElementById('btn-recapturar').style.display = 'none';
     }
 
-    // --- 3. BATER PONTO E UPLOAD DE FOTO ---
+    // --- 3. BATER PONTO E ENVIAR PARA O SUPABASE ---
     async function registrarPonto(e) {
       e.preventDefault();
 
       if (!fotoBlob) {
-        alert("Por favor, tire uma foto para usar como comprovante antes de bater o ponto!");
+        alert("Por favor, tire uma foto antes de bater o ponto!");
         return;
       }
 
@@ -191,7 +177,7 @@
       btn.innerText = "Registrando...";
 
       try {
-        // A) Upload para o Supabase Storage (Bucket "comprovantes")
+        // A) Upload para o Storage (Bucket 'comprovantes')
         const nomeArquivo = `ponto_${Date.now()}.jpg`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('comprovantes')
@@ -199,22 +185,22 @@
 
         if (uploadError) throw uploadError;
 
-        // B) Pega o Link Público do arquivo enviado
+        // B) Pega a URL pública da imagem
         const { data: publicUrlData } = supabase.storage
           .from('comprovantes')
           .getPublicUrl(nomeArquivo);
 
         const fotoUrl = publicUrlData.publicUrl;
 
-        // C) Inserir na tabela "registros_ponto"
+        // C) Insere os dados na tabela usando os nomes exatos das colunas do seu banco
         const funcionario = document.getElementById('funcionario').value;
         const tipo = document.getElementById('tipo').value;
 
         const { error: dbError } = await supabase.from('registros_ponto').insert([
           {
-            funcionario: funcionario,
-            tipo: tipo,
-            foto_url: fotoUrl
+            usuario_nome: funcionario,  // Nome da coluna no seu Table Editor
+            tipo_registro: tipo,        // Nome da coluna no seu Table Editor
+            foto_url: fotoUrl           // Nome da coluna no seu Table Editor
           }
         ]);
 
@@ -222,7 +208,6 @@
 
         alert("Ponto e comprovante registrados com sucesso!");
         
-        // Limpa formulário e reseta câmera
         document.getElementById('form-ponto').reset();
         reiniciarCamera();
         carregarHistorico();
@@ -237,7 +222,7 @@
       }
     }
 
-    // --- 4. CARREGAR HISTÓRICO COM FUSO HORÁRIO DE BRASÍLIA ---
+    // --- 4. CARREGAR HISTÓRICO DA TABELA ---
     async function carregarHistorico() {
       const tabela = document.getElementById('tabela-registros');
       
@@ -256,7 +241,7 @@
         }
 
         tabela.innerHTML = data.map(item => {
-          // Converte UTC salvo no Supabase para América/São_Paulo (Brasília)
+          // Converte UTC para o fuso de Brasília
           const dataUtc = new Date(item.created_at);
           const dataFormatada = dataUtc.toLocaleString('pt-BR', {
             timeZone: 'America/Sao_Paulo',
@@ -270,8 +255,8 @@
 
           return `
             <tr>
-              <td><strong>${item.funcionario || 'Anônimo'}</strong></td>
-              <td>${item.tipo}</td>
+              <td><strong>${item.usuario_nome || 'Anônimo'}</strong></td>
+              <td>${item.tipo_registro || '-'}</td>
               <td>${dataFormatada}</td>
               <td>${linkFoto}</td>
             </tr>
@@ -280,7 +265,7 @@
 
       } catch (err) {
         console.error("Erro ao carregar histórico:", err);
-        tabela.innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar registros.</td></tr>';
+        tabela.innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar registros. Verifique a chave ou permissões.</td></tr>';
       }
     }
   </script>
