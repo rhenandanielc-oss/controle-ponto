@@ -113,8 +113,11 @@
   <script>
     // --- 1. CONFIGURAÇÃO DO SUPABASE ---
     const SUPABASE_URL = 'https://igpoavxxfveoxoajfzpn.supabase.co';
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlncG9hdnh4ZnZlb3hvYWpmenBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgzMDA3OTUsImV4cCI6MjEwMzg3Njc5NX0.WZWjZTJFenZsX9qgbaHdp0C9fBOw09kCMLFCYr2tE7w'; // <--- COLE SUA ANON KEY AQUI
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const SUPABASE_KEY = 'SUA_ANON_KEY_AQUI'; // <--- COLE SUA ANON KEY AQUI
+
+    // Solução para evitar o erro de 'already been declared'
+    const { createClient } = window.supabase;
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let fotoBlob = null;
 
@@ -132,7 +135,7 @@
         video.srcObject = stream;
       } catch (err) {
         console.error("Erro ao acessar câmera:", err);
-        alert("Não foi possível acessar a câmera. Permita o acesso à câmera no seu navegador.");
+        alert("Não foi possível acessar a câmera. Permita o acesso no seu navegador.");
       }
     }
 
@@ -177,30 +180,30 @@
       btn.innerText = "Registrando...";
 
       try {
-        // A) Upload para o Storage (Bucket 'comprovantes')
+        // Upload para o Storage (Bucket 'comprovantes')
         const nomeArquivo = `ponto_${Date.now()}.jpg`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { data: uploadData, error: uploadError } = await supabaseClient.storage
           .from('comprovantes')
           .upload(nomeArquivo, fotoBlob);
 
         if (uploadError) throw uploadError;
 
-        // B) Pega a URL pública da imagem
-        const { data: publicUrlData } = supabase.storage
+        // Pega a URL pública
+        const { data: publicUrlData } = supabaseClient.storage
           .from('comprovantes')
           .getPublicUrl(nomeArquivo);
 
         const fotoUrl = publicUrlData.publicUrl;
 
-        // C) Insere os dados na tabela usando os nomes exatos das colunas do seu banco
+        // Insere no banco com as colunas corretas
         const funcionario = document.getElementById('funcionario').value;
         const tipo = document.getElementById('tipo').value;
 
-        const { error: dbError } = await supabase.from('registros_ponto').insert([
+        const { error: dbError } = await supabaseClient.from('registros_ponto').insert([
           {
-            usuario_nome: funcionario,  // Nome da coluna no seu Table Editor
-            tipo_registro: tipo,        // Nome da coluna no seu Table Editor
-            foto_url: fotoUrl           // Nome da coluna no seu Table Editor
+            usuario_nome: funcionario,
+            tipo_registro: tipo,
+            foto_url: fotoUrl
           }
         ]);
 
@@ -222,12 +225,12 @@
       }
     }
 
-    // --- 4. CARREGAR HISTÓRICO DA TABELA ---
+    // --- 4. CARREGAR HISTÓRICO ---
     async function carregarHistorico() {
       const tabela = document.getElementById('tabela-registros');
       
       try {
-        const { data, error } = await supabase
+        const { data, error } = await supabaseClient
           .from('registros_ponto')
           .select('*')
           .order('created_at', { ascending: false })
@@ -241,7 +244,6 @@
         }
 
         tabela.innerHTML = data.map(item => {
-          // Converte UTC para o fuso de Brasília
           const dataUtc = new Date(item.created_at);
           const dataFormatada = dataUtc.toLocaleString('pt-BR', {
             timeZone: 'America/Sao_Paulo',
@@ -265,7 +267,7 @@
 
       } catch (err) {
         console.error("Erro ao carregar histórico:", err);
-        tabela.innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar registros. Verifique a chave ou permissões.</td></tr>';
+        tabela.innerHTML = '<tr><td colspan="4" style="text-align: center; color: red;">Erro ao carregar registros.</td></tr>';
       }
     }
   </script>
