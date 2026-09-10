@@ -180,17 +180,17 @@
       btn.innerText = "Registrando...";
 
       try {
-        // Upload para o Storage (Bucket 'comprovantes')
+        // Upload para o Storage (Bucket 'comprovante')
         const nomeArquivo = `ponto_${Date.now()}.jpg`;
         const { data: uploadData, error: uploadError } = await supabaseClient.storage
-          .from('comprovantes')
+          .from('comprovante')
           .upload(nomeArquivo, fotoBlob);
 
         if (uploadError) throw uploadError;
 
         // Pega a URL pública
         const { data: publicUrlData } = supabaseClient.storage
-          .from('comprovantes')
+          .from('comprovante')
           .getPublicUrl(nomeArquivo);
 
         const fotoUrl = publicUrlData.publicUrl;
